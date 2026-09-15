@@ -1,376 +1,354 @@
-const board = document.getElementById("game-board");
-const restartButton = document.getElementById("restart");
-const scoreDisplay = document.getElementById("score");
-const bestScoreDisplay = document.getElementById("best-score");
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-let bestScore = Number(localStorage.getItem("bestScore")) || 0;
-const gameMessage = document.getElementById("game-message");
-const messageTitle = document.getElementById("message-title");
-const messageText = document.getElementById("message-text");
-const messageRestart = document.getElementById("message-restart");
+const scoreElement = document.getElementById("score");
+const startButton = document.getElementById("startButton");
 
-let gameOver = false;
-let hasWon = false;
+const gridSize = 20;
 
-let grid = [
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0]
+// 蛇
+let snake = [
+    { x: 200, y: 200 },
+    { x: 180, y: 200 },
+    { x: 160, y: 200 }
 ];
 
+// 食物
+let food = {
+    x: 100,
+    y: 100
+};
+
+// 方向
+let direction = "right";
+
+// 分数
 let score = 0;
 
+// 游戏状态
+let gameRunning = false;
 
-// ====================
-// 显示棋盘
-// ====================
-
-function createBoard() {
-
-    board.innerHTML = "";
-
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            const tile = document.createElement("div");
-
-            tile.classList.add("tile");
-
-            if (grid[row][col] !== 0) {
-
-    const value = grid[row][col];
-
-    tile.textContent = value;
-    tile.classList.add("tile-" + value);
-
-}
-
-            board.appendChild(tile);
-        }
-    }
-
-    scoreDisplay.textContent = score;
-    bestScoreDisplay.textContent = bestScore;
-}
+// 游戏计时器
+let gameTimer;
 
 
 // ====================
-// 随机生成数字
+// 画蛇
 // ====================
+function drawSnake() {
 
-function addRandomTile() {
+    snake.forEach((part, index) => {
 
-    const emptyTiles = [];
-
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            if (grid[row][col] === 0) {
-
-                emptyTiles.push({
-                    row: row,
-                    col: col
-                });
-
-            }
-        }
-    }
-
-    if (emptyTiles.length === 0) {
-        return;
-    }
-
-    const randomTile =
-        emptyTiles[Math.floor(Math.random() * emptyTiles.length)];
-
-    grid[randomTile.row][randomTile.col] =
-        Math.random() < 0.9 ? 2 : 4;
-}
-
-
-// ====================
-// 处理一行数字
-// ====================
-
-function processLine(line) {
-
-    // 删除空格
-    let numbers = line.filter(value => value !== 0);
-
-    let result = [];
-    let gainedScore = 0;
-
-    for (let i = 0; i < numbers.length; i++) {
-
-        if (numbers[i] === numbers[i + 1]) {
-
-            const merged = numbers[i] * 2;
-
-            result.push(merged);
-
-            gainedScore += merged;
-
-            i++;
-
+        if (index === 0) {
+            ctx.fillStyle = "#4CAF50";
         } else {
+            ctx.fillStyle = "#81C784";
+        }
 
-            result.push(numbers[i]);
+        ctx.fillRect(
+            part.x,
+            part.y,
+            gridSize,
+            gridSize
+        );
+    });
+}
+
+
+// ====================
+// 画食物
+// ====================
+function drawFood() {
+
+    ctx.fillStyle = "#ff5252";
+
+    ctx.fillRect(
+        food.x,
+        food.y,
+        gridSize,
+        gridSize
+    );
+}
+
+
+// ====================
+// 生成食物
+// ====================
+function generateFood() {
+
+    const maxPosition =
+        canvas.width / gridSize;
+
+    food.x =
+        Math.floor(Math.random() * maxPosition)
+        * gridSize;
+
+    food.y =
+        Math.floor(Math.random() * maxPosition)
+        * gridSize;
+}
+
+
+// ====================
+// 检查撞墙
+// ====================
+function checkWallCollision(head) {
+
+    return (
+        head.x < 0 ||
+        head.x >= canvas.width ||
+        head.y < 0 ||
+        head.y >= canvas.height
+    );
+}
+
+
+// ====================
+// 检查撞到自己
+// ====================
+function checkSelfCollision(head) {
+
+    for (let i = 1; i < snake.length; i++) {
+
+        if (
+            head.x === snake[i].x &&
+            head.y === snake[i].y
+        ) {
+            return true;
         }
     }
 
-    while (result.length < 4) {
-        result.push(0);
-    }
+    return false;
+}
 
-    return {
-        line: result,
-        score: gainedScore
+
+// ====================
+// 移动蛇
+// ====================
+function moveSnake() {
+
+    const head = {
+        x: snake[0].x,
+        y: snake[0].y
     };
-}
 
-
-// ====================
-// 检查棋盘是否改变
-// ====================
-
-function gridsEqual(oldGrid, newGrid) {
-
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            if (oldGrid[row][col] !== newGrid[row][col]) {
-                return false;
-            }
-
-        }
+    if (direction === "up") {
+        head.y -= gridSize;
     }
 
-    return true;
-}
-
-
-// ====================
-// 向左
-// ====================
-
-function moveLeft() {
-
-    const oldGrid = grid.map(row => [...row]);
-
-    for (let row = 0; row < 4; row++) {
-
-        const result = processLine(grid[row]);
-
-        grid[row] = result.line;
-
-        score += result.score;
+    if (direction === "down") {
+        head.y += gridSize;
     }
 
-    finishMove(oldGrid);
-}
-
-
-// ====================
-// 向右
-// ====================
-
-function moveRight() {
-
-    const oldGrid = grid.map(row => [...row]);
-
-    for (let row = 0; row < 4; row++) {
-
-        const reversed = [...grid[row]].reverse();
-
-        const result = processLine(reversed);
-
-        grid[row] = result.line.reverse();
-
-        score += result.score;
+    if (direction === "left") {
+        head.x -= gridSize;
     }
 
-    finishMove(oldGrid);
-}
-
-
-// ====================
-// 向上
-// ====================
-
-function moveUp() {
-
-    const oldGrid = grid.map(row => [...row]);
-
-    for (let col = 0; col < 4; col++) {
-
-        let column = [];
-
-        for (let row = 0; row < 4; row++) {
-            column.push(grid[row][col]);
-        }
-
-        const result = processLine(column);
-
-        for (let row = 0; row < 4; row++) {
-            grid[row][col] = result.line[row];
-        }
-
-        score += result.score;
+    if (direction === "right") {
+        head.x += gridSize;
     }
 
-    finishMove(oldGrid);
-}
 
+    // ====================
+    // 检查撞墙
+    // ====================
 
-// ====================
-// 向下
-// ====================
-
-function moveDown() {
-
-    const oldGrid = grid.map(row => [...row]);
-
-    for (let col = 0; col < 4; col++) {
-
-        let column = [];
-
-        for (let row = 0; row < 4; row++) {
-            column.push(grid[row][col]);
-        }
-
-        column.reverse();
-
-        const result = processLine(column);
-
-        result.line.reverse();
-
-        for (let row = 0; row < 4; row++) {
-            grid[row][col] = result.line[row];
-        }
-
-        score += result.score;
-    }
-
-    finishMove(oldGrid);
-}
-
-
-// ====================
-// 完成一次移动
-// ====================
-
-function finishMove(oldGrid) {
-
-    const changed = !gridsEqual(oldGrid, grid);
-
-    if (!changed) {
+    if (checkWallCollision(head)) {
+        gameOver();
         return;
     }
 
-    if (score > bestScore) {
-    bestScore = score;
-    localStorage.setItem("bestScore", bestScore);
-}
 
-    addRandomTile();
+    // ====================
+    // 检查撞自己
+    // ====================
 
-    createBoard();
-
-    // 检查是否达到 2048
-    if (!hasWon && checkWin()) {
-
-        hasWon = true;
-
-        showMessage(
-            "YOU WIN!",
-            "🎉 你成功达到 2048！"
-        );
-
+    if (checkSelfCollision(head)) {
+        gameOver();
         return;
     }
 
-    // 检查游戏是否结束
-    if (!canMove()) {
 
-        gameOver = true;
+    // 新蛇头
+    snake.unshift(head);
 
-        showMessage(
-            "GAME OVER",
-            "没有可以移动的方块了！"
-        );
+
+    // ====================
+    // 检查吃食物
+    // ====================
+
+    if (
+        head.x === food.x &&
+        head.y === food.y
+    ) {
+
+        score++;
+
+        scoreElement.textContent = score;
+
+        generateFood();
+
+    } else {
+
+        snake.pop();
+
     }
 }
+
+
+// ====================
+// 游戏画面
+// ====================
+function drawGame() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    drawSnake();
+    drawFood();
+}
+
+
+// ====================
+// Game Over
+// ====================
+function gameOver() {
+
+    gameRunning = false;
+
+    clearInterval(gameTimer);
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.fillStyle = "white";
+
+    ctx.font = "40px Arial";
+
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Game Over",
+        canvas.width / 2,
+        canvas.height / 2
+    );
+
+    ctx.font = "20px Arial";
+
+    ctx.fillText(
+        "Score: " + score,
+        canvas.width / 2,
+        canvas.height / 2 + 40
+    );
+
+    startButton.textContent = "Restart";
+}
+
+
+// ====================
+// 游戏循环
+// ====================
+function gameLoop() {
+
+    if (!gameRunning) {
+        return;
+    }
+
+    moveSnake();
+
+    if (gameRunning) {
+        drawGame();
+    }
+}
+
 
 // ====================
 // 键盘控制
 // ====================
-
 document.addEventListener("keydown", function(event) {
 
-    if (event.key === "ArrowLeft") {
-
-        event.preventDefault();
-        moveLeft();
-
+    if (
+        event.key === "ArrowUp" &&
+        direction !== "down"
+    ) {
+        direction = "up";
     }
 
-    if (event.key === "ArrowRight") {
-
-        event.preventDefault();
-        moveRight();
-
+    if (
+        event.key === "ArrowDown" &&
+        direction !== "up"
+    ) {
+        direction = "down";
     }
 
-    if (event.key === "ArrowUp") {
-
-        event.preventDefault();
-        moveUp();
-
+    if (
+        event.key === "ArrowLeft" &&
+        direction !== "right"
+    ) {
+        direction = "left";
     }
 
-    if (event.key === "ArrowDown") {
-
-        event.preventDefault();
-        moveDown();
-
+    if (
+        event.key === "ArrowRight" &&
+        direction !== "left"
+    ) {
+        direction = "right";
     }
-
 });
 
 
 // ====================
-// 开始游戏
+// 开始 / 重新开始
 // ====================
+startButton.addEventListener("click", function() {
 
-function startGame() {
+    // 如果正在游戏，就不要重复开始
+    if (gameRunning) {
+        return;
+    }
 
-    gameOver = false;
-    hasWon = false;
-
-    hideMessage();
-
-    grid = [
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0],
-        [0, 0, 0, 0]
+    // 重置蛇
+    snake = [
+        { x: 200, y: 200 },
+        { x: 180, y: 200 },
+        { x: 160, y: 200 }
     ];
 
+    // 重置方向
+    direction = "right";
+
+    // 重置分数
     score = 0;
 
-    addRandomTile();
-    addRandomTile();
+    scoreElement.textContent = score;
 
-    createBoard();
-}
+    // 重新生成食物
+    generateFood();
 
-restartButton.addEventListener("click", startGame);
+    // 开始游戏
+    gameRunning = true;
 
-startGame();
+    startButton.textContent = "Restart";
+
+    // 游戏速度
+    gameTimer = setInterval(gameLoop, 150);
+
+    drawGame();
+});
+
+
+// 第一次显示
+drawGame();
 
 // ====================
 // 手机滑动控制
@@ -379,7 +357,7 @@ startGame();
 let touchStartX = 0;
 let touchStartY = 0;
 
-board.addEventListener("touchstart", function(event) {
+canvas.addEventListener("touchstart", function(event) {
 
     const touch = event.touches[0];
 
@@ -389,7 +367,7 @@ board.addEventListener("touchstart", function(event) {
 }, { passive: true });
 
 
-board.addEventListener("touchend", function(event) {
+canvas.addEventListener("touchend", function(event) {
 
     const touch = event.changedTouches[0];
 
@@ -399,138 +377,52 @@ board.addEventListener("touchend", function(event) {
     const differenceX = touchEndX - touchStartX;
     const differenceY = touchEndY - touchStartY;
 
+    // 防止轻轻碰一下就改变方向
     const minimumSwipe = 30;
 
-    // 如果滑动距离太短，就不做任何事情
-    if (
-        Math.abs(differenceX) < minimumSwipe &&
-        Math.abs(differenceY) < minimumSwipe
-    ) {
-        return;
-    }
-
-    // 横向滑动
+    // 横向滑动比较明显
     if (Math.abs(differenceX) > Math.abs(differenceY)) {
 
-        if (differenceX > 0) {
-            moveRight();
-        } else {
-            moveLeft();
+        if (Math.abs(differenceX) < minimumSwipe) {
+            return;
         }
 
-    }
+        if (
+            differenceX > 0 &&
+            direction !== "left"
+        ) {
+            direction = "right";
+        }
 
-    // 纵向滑动
+        if (
+            differenceX < 0 &&
+            direction !== "right"
+        ) {
+            direction = "left";
+        }
+
+    } 
+    
+    // 纵向滑动比较明显
     else {
 
-        if (differenceY > 0) {
-            moveDown();
-        } else {
-            moveUp();
+        if (Math.abs(differenceY) < minimumSwipe) {
+            return;
         }
 
+        if (
+            differenceY > 0 &&
+            direction !== "up"
+        ) {
+            direction = "down";
+        }
+
+        if (
+            differenceY < 0 &&
+            direction !== "down"
+        ) {
+            direction = "up";
+        }
     }
 
 }, { passive: true });
-
-// ====================
-// 检查是否达到 2048
-// ====================
-
-function checkWin() {
-
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            if (grid[row][col] === 2048) {
-                return true;
-            }
-
-        }
-    }
-
-    return false;
-}
-
-
-// ====================
-// 检查是否还能移动
-// ====================
-
-function canMove() {
-
-    // 还有空格
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            if (grid[row][col] === 0) {
-                return true;
-            }
-
-        }
-    }
-
-    // 检查横向是否还有相同数字
-    for (let row = 0; row < 4; row++) {
-
-        for (let col = 0; col < 3; col++) {
-
-            if (grid[row][col] === grid[row][col + 1]) {
-                return true;
-            }
-
-        }
-    }
-
-    // 检查纵向是否还有相同数字
-    for (let row = 0; row < 3; row++) {
-
-        for (let col = 0; col < 4; col++) {
-
-            if (grid[row][col] === grid[row + 1][col]) {
-                return true;
-            }
-
-        }
-    }
-
-    return false;
-}
-
-
-// ====================
-// 显示消息
-// ====================
-
-function showMessage(title, text) {
-
-    messageTitle.textContent = title;
-    messageText.textContent = text;
-
-    gameMessage.classList.remove("hidden");
-}
-
-
-// ====================
-// 隐藏消息
-// ====================
-
-function hideMessage() {
-
-    gameMessage.classList.add("hidden");
-}
-
-
-// ====================
-// 重新开始
-// ====================
-
-messageRestart.addEventListener("click", function() {
-
-    hideMessage();
-
-    startGame();
-
-});
